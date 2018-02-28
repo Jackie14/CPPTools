@@ -1,0 +1,774 @@
+//////////////////////////////////////////////////////////////////////////
+// JSONParser.cpp
+//////////////////////////////////////////////////////////////////////////
+
+#include "JSONParser.h"
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <vector>
+#include <string>
+#include <sstream>
+#include <iostream>
+#include <math.h>
+
+
+#ifdef _WIN32
+#define strcasecmp stricmp
+#define strncasecmp strnicmp
+#pragma warning (disable: 4996)
+#endif
+
+// Whether a value is an illegal number (Not-a-Number)
+static inline bool isNaN(double x) { return x != x; }
+
+// Macros to free an array/object
+#define FreeArray(x) { JSONArray::iterator iter; for (iter = x.begin(); iter != x.end(); ++iter) { delete *iter; } }
+#define FreeObject(x) { JSONObject::iterator iter; for (iter = x.begin(); iter != x.end(); ++iter) { delete (*iter).second; } }
+
+//////////////////////////////////////////////////////////////////////////
+// Parses a JSON encoded value to a JSONValue object
+JSONValue* JSONValue::Parse(const char** data)
+{
+    if (**data == '"')
+    {
+        // Is it a string
+        std::string str;
+        if (!JSONParser::ExtractString(&(++(*data)), str))
+        {
+            return NULL;
+        }
+        else
+        {
+            return (new JSONValue(str));
+        }
+    }
+    else if (**data == '{')
+    {
+        // Is it an object
+        JSONObject object;
+
+        (*data)++;
+
+        while (**data != 0)
+        {
+            // Whitespace at the start?
+            if (!JSONParser::SkipWhitespace(data))
+            {
+                FreeObject(object);
+                return NULL;
+            }
+
+            // Special case - empty object
+            if (object.size() == 0 && **data == '}')
+            {
+                (*data)++;
+                return (new JSONValue(object));
+            }
+
+            // We want a string now...
+            std::string name;
+            if (!JSONParser::ExtractString(&(++(*data)), name))
+            {
+                FreeObject(object);
+                return NULL;
+            }
+
+            // More whitespace?
+            if (!JSONParser::SkipWhitespace(data))
+            {
+                FreeObject(object);
+                return NULL;
+            }
+
+            // Need a : now
+            if (*((*data)++) != ':')
+            {
+                FreeObject(object);
+                return NULL;
+            }
+
+            // More whitespace?
+            if (!JSONParser::SkipWhitespace(data))
+            {
+                FreeObject(object);
+                return NULL;
+            }
+
+            // The value is here			
+            JSONValue *value = Parse(data);
+            if (value == NULL)
+            {
+                FreeObject(object);
+                return NULL;
+            }
+
+            // Add the name:value
+            if (object.find(name) != object.end())
+            {
+                delete object[name];
+            }
+            object[name] = value;
+
+            // More whitespace?
+            if (!JSONParser::SkipWhitespace(data))
+            {
+                FreeObject(object);
+                return NULL;
+            }
+
+            // End of object?
+            if (**data == '}')
+            {
+                (*data)++;
+                return (new JSONValue(object));
+            }
+
+            // Want a , 
+            if (**data != ',')
+            {
+                FreeObject(object);
+                return NULL;
+            }
+
+            (*data)++;
+        }
+
+        // Only here if we ran out of data
+        FreeObject(object);
+        return NULL;
+    }
+    else if (**data == '[')
+    {
+        // Is it an array
+        JSONArray array;
+
+        (*data)++;
+
+        while (**data != 0)
+        {
+            // Whitespace at the start?
+            if (!JSONParser::SkipWhitespace(data))
+            {
+                FreeArray(array);
+                return NULL;
+            }
+
+            // Special case - empty array
+            if (array.size() == 0 && **data == ']')
+            {
+                (*data)++;
+                return (new JSONValue(array));
+            }
+
+            // Get the value
+            JSONValue *value = Parse(data);
+            if (value == NULL)
+            {
+                FreeArray(array);
+                return NULL;
+            }
+
+            // Add the value
+            array.push_back(value);
+
+            // More whitespace?
+            if (!JSONParser::SkipWhitespace(data))
+            {
+                FreeArray(array);
+                return NULL;
+            }
+
+            // End of array?
+            if (**data == ']')
+            {
+                (*data)++;
+                return (new JSONValue(array));
+            }
+
+            // Want a , 
+            if (**data != ',')
+            {
+                FreeArray(array);
+                return NULL;
+            }
+
+            (*data)++;
+        }
+
+        // Only here if we ran out of data
+        FreeArray(array);
+        return NULL;
+    }
+    else if (**data == '-' || (**data >= '0' && **data <= '9'))
+    {
+        // Is it a number
+        // Negative?
+        bool neg = **data == '-';
+        if (neg) 
+        {
+            (*data)++;
+        }
+
+        double number = 0.0;
+
+        // Parse the whole part of the number - only if it wasn't 0
+        if (**data == '0')
+        {
+            (*data)++;
+        }
+        else if (**data >= '1' && **data <= '9')
+        {
+            number = (double)JSONParser::ParseInt(data);
+        }
+        else
+        {
+            return NULL;
+        }
+
+        // Could be a decimal now...
+        if (**data == '.')
+        {
+            (*data)++;
+
+            // Not get any digits?
+            if (!(**data >= '0' && **data <= '9'))
+            {
+                return NULL;
+            }
+
+            // Find the decimal and sort the decimal place out
+            double decimal = (double)JSONParser::ParseInt(data);
+            while((int)decimal > 0) 
+            {
+                decimal /= 10.0f;
+            }
+
+            // Save the number
+            number += decimal;
+        }
+
+        // Could be an exponent now...
+        if (**data == 'E' || **data == 'e')
+        {
+            (*data)++;
+
+            // Check signage of expo
+            bool negExpo = false;
+            if (**data == '-' || **data == '+')
+            {
+                negExpo = **data == '-';
+                (*data)++;
+            }
+
+            // Not get any digits?
+            if (!(**data >= '0' && **data <= '9'))
+            {
+                return NULL;
+            }
+
+            // Sort the expo out
+            int expo = JSONParser::ParseInt(data);
+            for (int i = 0; i < expo; i++)
+            {
+                number = negExpo ? (number / 10.0) : (number * 10);
+            }
+        }
+
+        // Was it neg?
+        if (neg)
+        {
+            number *= -1;
+        }
+
+        return (new JSONValue(number));
+    }
+    else if (strncasecmp(*data, "true", 4) == 0)
+    {
+        // Is it true
+        (*data) += 4;
+        return (new JSONValue(true));
+    }
+    else if (strncasecmp(*data, "false", 5) == 0)
+    {
+        // Is it false
+        (*data) += 5;
+        return (new JSONValue(false));
+    }
+    else if (strncasecmp(*data, "null", 4) == 0)
+    {
+        // Is it a null
+        (*data) += 4;
+        return (new JSONValue());
+    }
+    else
+    {
+        // Do not know what is it
+        return NULL;
+    }
+}
+
+JSONValue::JSONValue()
+{
+    mType = JSONTypeNull;
+}
+
+// Basic constructor for creating a JSON Value of mType String
+JSONValue::JSONValue(const char* charValue)
+{
+    mType = JSONTypeString;
+    mStringValue = std::string(charValue);
+}
+
+// Basic constructor for creating a JSON Value of mType String
+JSONValue::JSONValue(std::string stringValue)
+{
+    mType = JSONTypeString;
+    mStringValue = stringValue;
+}
+
+// Basic constructor for creating a JSON Value of mType bool
+JSONValue::JSONValue(bool boolValue)
+{
+    mType = JSONTypeBool;
+    mBoolValue = boolValue;
+}
+
+// Basic constructor for creating a JSON Value of mType double
+JSONValue::JSONValue(double doubleValue)
+{
+    mType = JSONTypeDouble;
+    mDoubleValue = doubleValue;
+}
+
+// Basic constructor for creating a JSON Value of mType Array
+JSONValue::JSONValue(JSONArray arrayValue)
+{
+    mType = JSONTypeArray;
+    mArrayValue = arrayValue;
+}
+
+// Basic constructor for creating a JSON Value of mType Object
+JSONValue::JSONValue(JSONObject objectValue)
+{
+    mType = JSONTypeObject;
+    mObjectValue = objectValue;
+}
+
+JSONValue::~JSONValue()
+{
+    if (mType == JSONTypeArray)
+    {
+        JSONArray::iterator iter;
+        for (iter = mArrayValue.begin(); iter != mArrayValue.end(); ++iter)
+        {
+            delete *iter;
+        }
+    }
+    else if (mType == JSONTypeObject)
+    {
+        JSONObject::iterator iter;
+        for (iter = mObjectValue.begin(); iter != mObjectValue.end(); ++iter)
+        {
+            delete (*iter).second;
+        }
+    }
+}
+
+// Checks if the value is a NULL
+bool JSONValue::IsNull() const
+{
+    return (mType == JSONTypeNull);
+}
+
+//Checks if the value is a String
+bool JSONValue::IsString() const
+{
+    return (mType == JSONTypeString);
+}
+
+// Checks if the value is a bool
+bool JSONValue::IsBool() const
+{
+    return (mType == JSONTypeBool);
+}
+
+// Checks if the value is a double
+bool JSONValue::IsDouble() const
+{
+    return (mType == JSONTypeDouble);
+}
+
+// Checks if the value is an Array
+bool JSONValue::IsArray() const
+{
+    return (mType == JSONTypeArray);
+}
+
+// Checks if the value is an Object
+bool JSONValue::IsObject() const
+{
+    return (mType == JSONTypeObject);
+}
+
+// Retrieves the String value of this JSONValue
+std::string JSONValue::AsString() const
+{
+    return mStringValue;
+}
+
+// Retrieves the bool value of this JSONValue
+bool JSONValue::AsBool() const
+{
+    return mBoolValue;
+}
+
+// Retrieves the double value of this JSONValue
+double JSONValue::AsDouble() const
+{
+    return mDoubleValue;
+}
+
+// Retrieves the Array value of this JSONValue
+JSONArray JSONValue::AsArray() const
+{
+    return mArrayValue;
+}
+
+// Retrieves the Object value of this JSONValue
+JSONObject JSONValue::AsObject() const
+{
+    return mObjectValue;
+}
+
+// Creates a JSON encoded string for the value with all necessary characters escaped
+std::string JSONValue::ToString() const
+{
+    std::string result;
+
+    switch (mType)
+    {
+    case JSONTypeNull:
+        result = "null";
+        break;
+
+    case JSONTypeString:
+        result = StringifyString(mStringValue);
+        break;
+
+    case JSONTypeBool:
+        result = mBoolValue ? "true" : "false";
+        break;
+
+    case JSONTypeDouble:
+        {
+            if ((!isNaN(mDoubleValue) && isNaN(mDoubleValue - mDoubleValue)) || isNaN(mDoubleValue))
+            {
+                result = "null";
+            }
+            else
+            {
+                std::stringstream ss;
+                ss << mDoubleValue;
+                result = ss.str();
+            }
+            break;
+        }
+
+    case JSONTypeArray:
+        {
+            result = "[";
+            JSONArray::const_iterator citer = mArrayValue.begin();
+            while (citer != mArrayValue.end())
+            {
+                result += (*citer)->ToString();
+
+                // Not at the end - add a separator
+                if (++citer != mArrayValue.end())
+                {
+                    result += ",";
+                }
+            }
+            result += "]";
+            break;
+        }
+
+    case JSONTypeObject:
+        {
+            result = "{";
+            JSONObject::const_iterator citer = mObjectValue.begin();
+            while (citer != mObjectValue.end())
+            {
+                result += StringifyString((*citer).first);
+                result += ":";
+                result += (*citer).second->ToString();
+
+                // Not at the end - add a separator
+                if (++citer != mObjectValue.end())
+                {
+                    result += ",";
+                }
+            }
+            result += "}";
+            break;
+        }
+    }
+
+    return result;
+}
+
+// Creates a JSON encoded string with all required fields escaped
+std::string JSONValue::StringifyString(std::string str)
+{
+    std::string result = "\"";
+
+    std::string::iterator iter = str.begin();
+    while (iter != str.end())
+    {
+        char chr = *iter;
+
+        if (chr == '"' || chr == '\\' || chr == '/')
+        {
+            result += '\\';
+            result += chr;
+        }
+        else if (chr == '\b')
+        {
+            result += "\\b";
+        }
+        else if (chr == '\f')
+        {
+            result += "\\f";
+        }
+        else if (chr == '\n')
+        {
+            result += "\\n";
+        }
+        else if (chr == '\r')
+        {
+            result += "\\r";
+        }
+        else if (chr == '\t')
+        {
+            result += "\\t";
+        }
+        else if (chr < ' ')
+        {
+            result += "\\u";
+            for (int i = 0; i < 4; i++)
+            {
+                int value = (chr >> 12) & 0xf;
+                if (value >= 0 && value <= 9)
+                {
+                    result += (char)('0' + value);
+                }
+                else if (value >= 10 && value <= 15)
+                {
+                    result += (char)('A' + (value - 10));
+                }
+                chr <<= 4;
+            }
+        }
+        else
+        {
+            result += chr;
+        }
+
+        iter++;
+    }
+
+    result += "\"";
+    return result;
+}
+//////////////////////////////////////////////////////////////////////////
+
+JSONParser::JSONParser()
+{
+}
+
+// Parses a complete JSON encoded string
+JSONValue *JSONParser::Parse(const char* data)
+{
+    // Skip any preceding whitespace, end of data = no JSON = fail
+    if (!SkipWhitespace(&data))
+    {
+        return NULL;
+    }
+
+    // We need the start of a value here now...
+    JSONValue *value = JSONValue::Parse(&data);
+    if (value == NULL)
+    {
+        return NULL;
+    }
+
+    // Can be white space now and should be at the end of the string then...
+    if (SkipWhitespace(&data))
+    {
+        delete value;
+        return NULL;
+    }
+
+    // We're now at the end of the string
+    return value;
+}
+
+// Turns the passed in JSONValue into a JSON encode string
+std::string JSONParser::ToString(JSONValue* value)
+{
+    if (value != NULL)
+    {
+        return value->ToString();
+    }
+    else
+    {
+        return "";
+    }
+}
+
+// Skips over any whitespace characters (space, tab, \r or \n) defined by the JSON spec
+bool JSONParser::SkipWhitespace(const char** data)
+{
+    while (**data != 0 && (**data == ' ' || **data == '\t' || **data == '\r' || **data == '\n'))
+    {
+        (*data)++;
+    }
+
+    return **data != 0;
+}
+
+// Extracts a JSON String as defined by the spec - "<some chars>"
+bool JSONParser::ExtractString(const char** data, std::string& str)
+{
+    size_t length = 0;
+    str = "";
+
+    while(**data != 0)
+    {
+        // Save the char so we can change it if need be
+        char nextChar = **data;
+
+        // Escaping something?
+        if (nextChar == '\\')
+        {
+            // Move over the escape char
+            (*data)++;
+
+            // Deal with the escaped char
+            switch (**data)
+            {
+            case '"':
+                nextChar = '"';
+                break;
+            case '\\':
+                nextChar = '\\';
+                break;
+            case '/': 
+                nextChar = '/';
+                break;
+            case 'b':
+                nextChar = '\b';
+                break;
+            case 'f':
+                nextChar = '\f';
+                break;
+            case 'n':
+                nextChar = '\n';
+                break;
+            case L'r':
+                nextChar = '\r';
+                break;
+            case L't':
+                nextChar = '\t'; 
+                break;
+            case 'u':
+                {
+                    // We need 5 chars (4 hex + the 'u') or its not valid
+                    if (strlen(*data) < 5)
+                    {
+                        return false;
+                    }
+
+                    // Deal with the chars
+                    nextChar = 0;
+                    for (int i = 0; i < 4; i++)
+                    {
+                        // Do it first to move off the 'u' and leave us on the 
+                        // final hex digit as we move on by one later on
+                        (*data)++;
+
+                        nextChar <<= 4;
+
+                        // Parse the hex digit
+                        if (**data >= '0' && **data <= '9')
+                        {
+                            nextChar |= (**data - '0');
+                        }
+                        else if (**data >= 'A' && **data <= 'F')
+                        {
+                            nextChar |= (10 + (**data - 'A'));
+                        }
+                        else if (**data >= 'a' && **data <= 'f')
+                        {
+                            nextChar |= (10 + (**data - 'a'));
+                        }
+                        else
+                        {
+                            // Invalid hex digit = invalid JSON
+                            return false;
+                        }
+                    }
+                    break;
+                }
+
+                // By the spec, only the above cases are allowed
+            default:
+                return false;
+            }
+        }
+        else if (nextChar == '"')
+        {
+            // End of the string
+            (*data)++;
+            str.reserve(); // Remove unused capacity
+            return true;
+        }
+        else if (nextChar < ' ' && nextChar != '\t')
+        {
+            // Disallowed char?
+            // SPEC Violation: Allow tabs due to real world cases
+            return false;
+        }
+
+        // String will be one longer - do it before memory size check
+        length++;
+
+        // Need more memory?
+        if (length > str.capacity())
+        {
+            length += 256;
+            str.reserve(length);
+        }
+
+        // Add the next char
+        str += nextChar;
+
+        // Move on
+        (*data)++;
+    }
+
+    // If we're here, the string ended incorrectly
+    return false;
+}
+
+// Parses some text as though it is an integer
+int JSONParser::ParseInt(const char** data)
+{
+    int result = 0;
+    while (**data != 0 && **data >= '0' && **data <= '9')
+    {
+        result = result * 10 + (*(*data)++ - '0');
+    }
+
+    return result;
+}

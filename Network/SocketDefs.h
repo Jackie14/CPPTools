@@ -1,0 +1,142 @@
+//////////////////////////////////////////////////////////////////////////
+// SocketDefs.h
+// Yuchuan Wang
+//////////////////////////////////////////////////////////////////////////
+
+#ifndef SocketDefs_INCLUDED
+#define SocketDefs_INCLUDED
+
+#if defined _WIN32
+// Make sure include winsock2.h before including Windows.h
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "Ws2_32.lib")
+
+#define INVALID_SOCKET_T            INVALID_SOCKET
+#define SOCKET_t                    SOCKET
+#define SOCKET_LENGTH_t             int
+#define CLOSE_SOCKET(s)             closesocket(s)
+
+#define SOCKET_ERROR_INTR           WSAEINTR
+#define SOCKET_ERROR_ACCES          WSAEACCES
+#define SOCKET_ERROR_FAULT          WSAEFAULT
+#define SOCKET_ERROR_INVAL          WSAEINVAL
+#define SOCKET_ERROR_MFILE          WSAEMFILE
+#define SOCKET_ERROR_AGAIN          WSAEWOULDBLOCK
+#define SOCKET_ERROR_WOULDBLOCK     WSAEWOULDBLOCK
+#define SOCKET_ERROR_INPROGRESS     WSAEINPROGRESS
+#define SOCKET_ERROR_ALREADY        WSAEALREADY
+#define SOCKET_ERROR_NOTSOCK        WSAENOTSOCK
+#define SOCKET_ERROR_DESTADDRREQ    WSAEDESTADDRREQ
+#define SOCKET_ERROR_MSGSIZE        WSAEMSGSIZE
+#define SOCKET_ERROR_PROTOTYPE      WSAEPROTOTYPE
+#define SOCKET_ERROR_NOPROTOOPT     WSAENOPROTOOPT
+#define SOCKET_ERROR_PROTONOSUPPORT WSAEPROTONOSUPPORT
+#define SOCKET_ERROR_SOCKTNOSUPPORT WSAESOCKTNOSUPPORT
+#define SOCKET_ERROR_NOTSUP         WSAEOPNOTSUPP
+#define SOCKET_ERROR_PFNOSUPPORT    WSAEPFNOSUPPORT
+#define SOCKET_ERROR_AFNOSUPPORT    WSAEAFNOSUPPORT
+#define SOCKET_ERROR_ADDRINUSE      WSAEADDRINUSE
+#define SOCKET_ERROR_ADDRNOTAVAIL   WSAEADDRNOTAVAIL
+#define SOCKET_ERROR_NETDOWN        WSAENETDOWN
+#define SOCKET_ERROR_NETUNREACH     WSAENETUNREACH
+#define SOCKET_ERROR_NETRESET       WSAENETRESET
+#define SOCKET_ERROR_CONNABORTED    WSAECONNABORTED
+#define SOCKET_ERROR_CONNRESET      WSAECONNRESET
+#define SOCKET_ERROR_NOBUFS         WSAENOBUFS
+#define SOCKET_ERROR_ISCONN         WSAEISCONN
+#define SOCKET_ERROR_NOTCONN        WSAENOTCONN
+#define SOCKET_ERROR_SHUTDOWN       WSAESHUTDOWN
+#define SOCKET_ERROR_TIMEDOUT       WSAETIMEDOUT
+#define SOCKET_ERROR_CONNREFUSED    WSAECONNREFUSED
+#define SOCKET_ERROR_HOSTDOWN       WSAEHOSTDOWN
+#define SOCKET_ERROR_HOSTUNREACH    WSAEHOSTUNREACH
+#define SOCKET_ERROR_SYSNOTREADY    WSASYSNOTREADY
+#define SOCKET_ERROR_NOTINIT        WSANOTINITIALISED
+#define SOCKET_ERROR_HOSTNOFOUND    WSAHOST_NOT_FOUND
+#define SOCKET_ERROR_TRY_AGAIN      WSATRY_AGAIN
+#define SOCKET_ERROR_NO_RECOVERY    WSANO_RECOVERY
+#define SOCKET_ERROR_NO_DATA        WSANO_DATA
+
+#else
+#include <unistd.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/select.h>
+#include <sys/ioctl.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <ifaddrs.h>
+#include <fcntl.h>
+
+#define INVALID_SOCKET_T            -1
+#define SOCKET_t                    int
+#define SOCKET_LENGTH_t             socklen_t
+#define CLOSE_SOCKET(s)             ::close(s)
+#define SOCKET_ERROR_INTR           EINTR
+#define SOCKET_ERROR_ACCES          EACCES
+#define SOCKET_ERROR_FAULT          EFAULT
+#define SOCKET_ERROR_INVAL          EINVAL
+#define SOCKET_ERROR_MFILE          EMFILE
+#define SOCKET_ERROR_AGAIN          EAGAIN
+#define SOCKET_ERROR_WOULDBLOCK     EWOULDBLOCK
+#define SOCKET_ERROR_INPROGRESS     EINPROGRESS
+#define SOCKET_ERROR_ALREADY        EALREADY
+#define SOCKET_ERROR_NOTSOCK        ENOTSOCK
+#define SOCKET_ERROR_DESTADDRREQ    EDESTADDRREQ
+#define SOCKET_ERROR_MSGSIZE        EMSGSIZE
+#define SOCKET_ERROR_PROTOTYPE      EPROTOTYPE
+#define SOCKET_ERROR_NOPROTOOPT     ENOPROTOOPT
+#define SOCKET_ERROR_PROTONOSUPPORT EPROTONOSUPPORT
+#if defined(ESOCKTNOSUPPORT)
+#define SOCKET_ERROR_SOCKTNOSUPPORT ESOCKTNOSUPPORT
+#else
+#define SOCKET_ERROR_SOCKTNOSUPPORT -1
+#endif
+#define SOCKET_ERROR_NOTSUP         ENOTSUP
+#define SOCKET_ERROR_PFNOSUPPORT    EPFNOSUPPORT
+#define SOCKET_ERROR_AFNOSUPPORT    EAFNOSUPPORT
+#define SOCKET_ERROR_ADDRINUSE      EADDRINUSE
+#define SOCKET_ERROR_ADDRNOTAVAIL   EADDRNOTAVAIL
+#define SOCKET_ERROR_NETDOWN        ENETDOWN
+#define SOCKET_ERROR_NETUNREACH     ENETUNREACH
+#define SOCKET_ERROR_NETRESET       ENETRESET
+#define SOCKET_ERROR_CONNABORTED    ECONNABORTED
+#define SOCKET_ERROR_CONNRESET      ECONNRESET
+#define SOCKET_ERROR_NOBUFS         ENOBUFS
+#define SOCKET_ERROR_ISCONN         EISCONN
+#define SOCKET_ERROR_NOTCONN        ENOTCONN
+#if defined(ESHUTDOWN)
+#define SOCKET_ERROR_SHUTDOWN       ESHUTDOWN
+#else
+#define SOCKET_ERROR_SHUTDOWN       -2
+#endif
+#define SOCKET_ERROR_TIMEDOUT       ETIMEDOUT
+#define SOCKET_ERROR_CONNREFUSED    ECONNREFUSED
+#if defined(EHOSTDOWN)
+#define SOCKET_ERROR_HOSTDOWN       EHOSTDOWN
+#else
+#define SOCKET_ERROR_HOSTDOWN       -3
+#endif
+#define SOCKET_ERROR_HOSTUNREACH    EHOSTUNREACH
+#define SOCKET_ERROR_SYSNOTREADY    -4
+#define SOCKET_ERROR_NOTINIT        -5
+#define SOCKET_ERROR_HOSTNOFOUND    HOST_NOT_FOUND
+#define SOCKET_ERROR_TRY_AGAIN      TRY_AGAIN
+#define SOCKET_ERROR_NO_RECOVERY    NO_RECOVERY
+#define SOCKET_ERROR_NO_DATA        NO_DATA
+#endif
+
+#define socket_set_sa_len(pSA, len) (void) 0
+#define socket_set_sin_len(pSA)     (void) 0
+#define socket_set_sin6_len(pSA)    (void) 0
+
+#ifndef INADDR_NONE
+#define INADDR_NONE 0xFFFFFFFF
+#endif
+
+#endif // SocketDefs_INCLUDED

@@ -1,0 +1,40 @@
+lcc_SHLIBS := libCommon
+
+libCommon_SOURCES := \
+    ./Base/CriticalSection.cpp \
+    ./Datetime/DateTime.cpp \
+    ./Datetime/DateTimeFormatter.cpp \
+    ./Datetime/Timespan.cpp \
+    ./Datetime/Timestamp.cpp \
+    ./FileSystem/FilePath.cpp \
+    ./FileSystem/FileSpec.cpp \
+    ./Hash/CRC32Hash.cpp \
+    ./Hash/HashBase.cpp \
+    ./Hash/MD5Hash.cpp \
+    ./Misc/Log.cpp \
+    ./Misc/NumberFormatter.cpp \
+    ./Misc/NumberParser.cpp \
+    ./Misc/StringUtilities.cpp \
+    ./Misc/Timer.cpp \
+    ./Network/DNS.cpp \
+    ./Network/HostEntry.cpp \
+    ./Network/HTTPMessage.cpp \
+    ./Network/IPAddress.cpp \
+    ./Network/NetworkInterface.cpp \
+    ./Network/PingUtilities.cpp \
+    ./Network/Socket.cpp \
+    ./Network/SocketAddress.cpp \
+    ./XML/XMLParser.cpp \
+    ./XML/XMLSerialize.cpp
+
+libCommon_CPPFLAGS := -Wall -fmessage-length=0 -std=c++0x \
+-I$(SNWL_CURDIR)./Base \
+-I$(SNWL_CURDIR)./Datetime \
+-I$(SNWL_CURDIR)./FileSystem \
+-I$(SNWL_CURDIR)./Hash \
+-I$(SNWL_CURDIR)./Misc \
+-I$(SNWL_CURDIR)./Network \
+-I$(SNWL_CURDIR)./XML
+
+libCommon_LDFLAGS := -lpthread -lcrypto
+
